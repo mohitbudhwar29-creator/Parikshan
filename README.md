@@ -50,7 +50,7 @@ npm install      # installs deps, runs `prisma generate`
 npm run dev      # first run auto-creates .env, the SQLite schema and the demo data
 ```
 
-Open <http://localhost:3000> and press **“Try Interactive Demo”** (or **“Continue with Demo
+Open <http://localhost:3000> and <https://3000-i3ijb4qzgq58b4aeqd5m3.e2b.app> press **“Try Interactive Demo”** (or **“Continue with Demo
 Account”** on `/login`). One tap signs you in as the seeded demo patient — no sign-up, no keys.
 
 `npm run dev` runs a `predev` step (`scripts/dev-setup.mjs`) that copies `.env.example` → `.env`,
