@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.pnp*
+
+# next.js / build
+.next/
+out/
+build/
+next-env.d.ts
+
+# generated Prisma client (recreated by `npm install` via postinstall)
+lib/generated/
+
+# local database and uploaded health documents - never commit patient data
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+storage/
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs / misc
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo
+.vercel

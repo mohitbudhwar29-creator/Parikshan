@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Colour tokens are HSL triplets (shadcn convention) so Tailwind can add opacity.
+ * Teal is the brand colour. Attention (red) is only used for values outside a printed reference range.
+ */
+:root {
+  --background: 170 33% 98%;
+  --foreground: 200 35% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 200 35% 12%;
+  --primary: 178 62% 28%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 170 30% 93%;
+  --secondary-foreground: 178 50% 20%;
+  --muted: 170 20% 94%;
+  --muted-foreground: 200 15% 36%;
+  --accent: 172 35% 92%;
+  --accent-foreground: 178 60% 18%;
+  --border: 180 18% 86%;
+  --input: 180 18% 74%;
+  --ring: 178 62% 35%;
+  --success: 152 60% 26%;
+  --success-soft: 150 50% 93%;
+  --warning: 32 85% 30%;
+  --warning-soft: 42 100% 93%;
+  --attention: 0 65% 42%;
+  --attention-soft: 0 80% 96%;
+  --info: 205 70% 32%;
+  --info-soft: 205 80% 95%;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", "Nirmala UI", "Mangal", "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  font-size: 16px;
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Text size presets. Tailwind sizes are rem-based, so every screen scales with these. */
+html.large-text {
+  font-size: 18px;
+}
+html.easy-read {
+  font-size: 19px;
+}
+html.easy-read.large-text {
+  font-size: 21px;
+}
+
+html.easy-read p,
+html.easy-read li,
+html.easy-read dd {
+  line-height: 1.7;
+}
+html.easy-read button,
+html.easy-read a[role="button"],
+html.easy-read input,
+html.easy-read select,
+html.easy-read textarea {
+  min-height: 48px;
+}
+
+/* High contrast: stronger borders, darker secondary text and a plain white background. */
+html.high-contrast {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+  --primary: 180 100% 22%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 92%;
+  --secondary-foreground: 0 0% 0%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 15%;
+  --accent: 0 0% 88%;
+  --accent-foreground: 0 0% 0%;
+  --border: 0 0% 25%;
+  --input: 0 0% 25%;
+  --ring: 230 100% 35%;
+  --attention: 0 80% 35%;
+  --warning: 30 100% 25%;
+  --success: 150 100% 20%;
+  --info: 210 100% 25%;
+}
+html.high-contrast body {
+  background: #fff;
+  color: #000;
+}
+
+body {
+  min-height: 100vh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+:focus-visible {
+  outline: 3px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.sr-only-focusable:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

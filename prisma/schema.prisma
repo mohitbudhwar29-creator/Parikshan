@@ -1,0 +1,170 @@
+// Personal Health Copilot - data model.
+//
+// FHIR / ABDM mapping (see lib/fhir/mappers.ts for the executable mapping):
+//   User               -> Patient (account holder; ABHA link is a placeholder for ABDM)
+//   HealthProfile      -> Patient (each person whose records are managed)
+//   HealthRecord       -> DocumentReference + DiagnosticReport / Encounter (by record type)
+//   LabResult          -> Observation (laboratory category)
+//   HealthMetric       -> Observation (vital-signs / measurement category)
+//   Medication         -> MedicationRequest (prescribed) / MedicationStatement (taken)
+//   DoseLog            -> MedicationStatement / MedicationAdministration (patient-reported)
+//   DrugInteraction    -> Mock reference data; a verified API would replace it
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../lib/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id         String   @id @default(cuid())
+  // ABHA number is stored only for the demo link. Never transmitted to any service.
+  // Real ABDM integration: store only the ABHA address/health ID token returned by ABDM consent flows.
+  abhaNumber String?
+  name       String
+  email      String   @unique
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  profiles HealthProfile[]
+}
+
+model HealthProfile {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String
+  dateOfBirth  DateTime?
+  // SELF | CHILD | PARENT | ELDER | OTHER
+  relationship String    @default("SELF")
+  createdAt    DateTime  @default(now())
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  records     HealthRecord[]
+  medications Medication[]
+  metrics     HealthMetric[]
+
+  @@index([userId])
+}
+
+model HealthRecord {
+  id            String   @id @default(cuid())
+  profileId     String
+  // PRESCRIPTION | LAB_REPORT | DOCTOR_VISIT | OTHER
+  type          String
+  // REVIEW (OCR draft awaiting user confirmation) | SAVED
+  status        String   @default("SAVED")
+  title         String
+  recordDate    DateTime
+  doctorName    String?
+  facility      String?
+  // Storage key of the uploaded file (never a public URL). Served via an ownership-checked route.
+  fileKey       String?
+  fileName      String?
+  mimeType      String?
+  rawText       String?
+  // Structured extraction (draft or confirmed) as JSON, validated with Zod.
+  extractedJson String?
+  // Cached AI summary (JSON, includes locale). Regenerated on demand.
+  summary       String?
+  ocrProvider   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile     HealthProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  labResults  LabResult[]
+  medications Medication[]
+  metrics     HealthMetric[]
+
+  @@index([profileId, recordDate])
+}
+
+model LabResult {
+  id             String   @id @default(cuid())
+  healthRecordId String
+  testName       String
+  // Display value as read from the document (may be "120/80" or text).
+  value          String
+  numericValue   Float?
+  unit           String?
+  referenceRange String?
+  // NORMAL | LOW | HIGH | UNKNOWN
+  flag           String   @default("UNKNOWN")
+  metricName     String?
+  date           DateTime
+
+  record HealthRecord @relation(fields: [healthRecordId], references: [id], onDelete: Cascade)
+
+  @@index([healthRecordId])
+}
+
+model Medication {
+  id             String    @id @default(cuid())
+  profileId      String
+  sourceRecordId String?
+  name           String
+  dosage         String
+  frequency      String
+  timesPerDay    Int       @default(1)
+  durationDays   Int?
+  startDate      DateTime
+  // Null means no end date recorded (ongoing).
+  endDate        DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  profile      HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  sourceRecord HealthRecord? @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
+  doseLogs     DoseLog[]
+
+  @@index([profileId])
+}
+
+model DoseLog {
+  id           String   @id @default(cuid())
+  medicationId String
+  // Calendar day (UTC midnight) the dose belongs to.
+  doseDate     DateTime
+  // MORNING | AFTERNOON | NIGHT
+  slot         String
+  takenAt      DateTime @default(now())
+
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@unique([medicationId, doseDate, slot])
+}
+
+model HealthMetric {
+  id             String   @id @default(cuid())
+  profileId      String
+  // hemoglobin | blood_glucose | blood_pressure_systolic | blood_pressure_diastolic |
+  // heart_rate | weight | vitamin_d | cholesterol_total
+  metricName     String
+  value          Float
+  unit           String
+  recordedAt     DateTime
+  sourceRecordId String?
+  referenceLow   Float?
+  referenceHigh  Float?
+
+  profile      HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  sourceRecord HealthRecord? @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, metricName, recordedAt])
+}
+
+model DrugInteraction {
+  id          String @id @default(cuid())
+  // Normalised lowercase generic names, stored alphabetically (medicineA < medicineB).
+  medicineA   String
+  medicineB   String
+  // Currently always "potential" - the app never grades severity beyond "may interact".
+  severity    String @default("potential")
+  description String
+  source      String @default("mock-demo-dataset")
+
+  @@unique([medicineA, medicineB])
+}
