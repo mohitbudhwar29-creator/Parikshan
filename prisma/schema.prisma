@@ -1,0 +1,315 @@
+// Personal Health Copilot — data model
+// ---------------------------------------------------------------------------
+// NOTE ON SQLITE + PRISMA ENUMS
+// SQLite does not support native enums, so values that would normally be enums
+// are stored as strings. The allowed values and their TypeScript unions live in
+// `src/types/domain.ts` and are enforced with Zod at every write boundary.
+//
+// FHIR / ABDM READINESS (see also src/lib/fhir/mappers.ts)
+//   User + HealthProfile  -> FHIR Patient
+//   HealthRecord          -> FHIR DocumentReference / DiagnosticReport
+//   LabResult             -> FHIR Observation
+//   Medication            -> FHIR MedicationRequest / MedicationStatement
+//   HealthMetric          -> FHIR Observation (vital-signs / laboratory category)
+//   Doctor visit record   -> FHIR Encounter
+// Every model keeps a stable `id` and ISO `createdAt`/`updatedAt` timestamps so
+// that an FHIR `id` + `meta.lastUpdated` can be produced without migration.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  // "client" = WASM query compiler + driver adapter: no native engine binary.
+  engineType = "client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Demo account holder. `abhaNumber` is a *demo placeholder* only —
+/// no data is ever sent to ABDM in this build (see src/lib/fhir/abha.ts).
+model User {
+  id        String   @id @default(cuid())
+  abhaNumber String? @unique
+  abhaLinked Boolean @default(false)
+  name      String
+  email     String   @unique
+  isDemo    Boolean  @default(false)
+  activeProfileId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profiles    HealthProfile[]
+  preferences UserPreferences?
+  sessions    Session[]
+  consents    Consent[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+/// Accessibility / language / notification preferences (one row per user).
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  language       String  @default("en") // "en" | "hi"
+  easyRead       Boolean @default(false)
+  largeText      Boolean @default(false)
+  highContrast   Boolean @default(false)
+  readAloud      Boolean @default(true)
+  autoReadAloud  Boolean @default(false)
+  notifyMeds     Boolean @default(true)
+  notifyRecords  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+/// Server-side session record. Only a SHA-256 hash of the cookie token is
+/// stored, so a database leak does not expose usable sessions.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// ABDM-ready consent record. Real ABDM consent artefacts are signed JSON;
+/// this table is the local placeholder for that flow.
+model Consent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String // e.g. "SELF_CARE" | "CAREGIVER_ACCESS"
+  status    String   @default("GRANTED") // GRANTED | REVOKED | EXPIRED
+  version   String   @default("demo-1.0")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("consents")
+}
+
+/// Lightweight audit trail (privacy / compliance readiness).
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // e.g. "record.upload", "record.delete", "profile.create"
+  entityType String?
+  entityId   String?
+  meta       String? // JSON string — never contains clinical payloads
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+/// A health profile = one person whose records live under the account.
+/// Enables "My Health" plus child / parent / elder profiles for caregivers.
+model HealthProfile {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name         String
+  relationship String  @default("SELF") // SELF | CHILD | PARENT | SPOUSE | SIBLING | CAREGIVEE | OTHER
+  kind         String  @default("ADULT") // ADULT | CHILD | ELDER
+  dateOfBirth  DateTime?
+  gender       String?
+  bloodGroup   String?
+  avatarEmoji  String  @default("🙂")
+  isPrimary    Boolean @default(false)
+  isDemo       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  records     HealthRecord[]
+  medications Medication[]
+  metrics     HealthMetric[]
+  labResults  LabResult[]
+  chatMessages ChatMessage[]
+
+  @@index([userId])
+  @@map("health_profiles")
+}
+
+/// An uploaded document (prescription, lab report, visit note ...).
+model HealthRecord {
+  id        String @id @default(cuid())
+  profileId String
+  profile   HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  type       String // PRESCRIPTION | LAB_REPORT | DOCTOR_VISIT | DISCHARGE_SUMMARY | VACCINATION | IMAGING | OTHER
+  title      String
+  recordDate DateTime
+  doctorName     String?
+  facilityName   String?
+  diagnosisTerms String? // JSON string[] of free-text diagnosis/impression phrases
+
+  status String @default("READY") // PROCESSING | READY | NEEDS_REVIEW | FAILED
+
+  // Stored outside the web root and streamed only to the owning profile.
+  fileName String?
+  filePath String?
+  mimeType String?
+  fileSize Int?
+
+  rawText       String? // OCR text output
+  ocrProvider   String?
+  ocrConfidence Float?
+  extraction    String? // JSON snapshot of the structured extraction (audit of what OCR produced)
+  corrections   String? // JSON [{ field, from, to, at }] — user-verified OCR fixes
+  aiSummary     String? // JSON HealthSummary sections
+  aiSummaryAt   DateTime?
+  aiProvider    String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  labResults  LabResult[]
+  medications Medication[]
+  metrics     HealthMetric[]
+
+  @@index([profileId, recordDate])
+  @@map("health_records")
+}
+
+/// A single reported value inside a record (e.g. Hemoglobin 11.0 g/dL).
+model LabResult {
+  id             String @id @default(cuid())
+  healthRecordId String
+  healthRecord   HealthRecord @relation(fields: [healthRecordId], references: [id], onDelete: Cascade)
+  profileId      String
+  profile        HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  testName       String
+  value          String
+  numericValue   Float?
+  unit           String?
+  referenceRange String?
+  status         String @default("UNKNOWN") // WITHIN_RANGE | BELOW_RANGE | ABOVE_RANGE | UNKNOWN
+  date           DateTime
+  isVerified     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([profileId, testName])
+  @@map("lab_results")
+}
+
+/// A prescribed / ongoing medicine.
+model Medication {
+  id        String @id @default(cuid())
+  profileId String
+  profile   HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  healthRecordId String?
+  healthRecord   HealthRecord? @relation(fields: [healthRecordId], references: [id], onDelete: SetNull)
+
+  name        String
+  dosage      String? // "500 mg"
+  frequency   String? // "Twice daily"
+  duration    String? // "5 days"
+  startDate   DateTime
+  endDate     DateTime?
+  status      String @default("ACTIVE") // ACTIVE | COMPLETED | UPCOMING
+  slots       String @default("[]") // JSON string[] of MORNING | AFTERNOON | EVENING | NIGHT
+  notes       String?
+  isVerified  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doseLogs DoseLog[]
+
+  @@index([profileId, status])
+  @@map("medications")
+}
+
+/// Per-day tick-off for "Today's medicines" (demo reminders are local only).
+model DoseLog {
+  id           String @id @default(cuid())
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  profileId    String
+
+  day  String // "2026-10-08" (local calendar day)
+  slot String // MORNING | AFTERNOON | EVENING | NIGHT
+  time String? // "08:00"
+  status    String   @default("PENDING") // PENDING | TAKEN | SKIPPED
+  takenAt   DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([medicationId, day, slot])
+  @@index([profileId, day])
+  @@map("dose_logs")
+}
+
+/// Time-series point used by the trends dashboard.
+model HealthMetric {
+  id        String @id @default(cuid())
+  profileId String
+  profile   HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  metricKey  String // hemoglobin | glucose_fasting | bp_systolic | bp_diastolic | heart_rate | weight | vitamin_d | cholesterol_total | ...
+  label      String
+  value      Float
+  unit       String
+  recordedAt DateTime
+  sourceRecordId String?
+  sourceRecord   HealthRecord? @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([profileId, metricKey, recordedAt])
+  @@map("health_metrics")
+}
+
+/// Assistant conversation history (grounded answers only).
+model ChatMessage {
+  id        String @id @default(cuid())
+  profileId String
+  profile   HealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  role    String // user | assistant
+  content String
+  sources String? // JSON array of { recordId, title, date }
+  intent  String?
+  grounded Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([profileId, createdAt])
+  @@map("chat_messages")
+}
+
+/// Local drug-interaction knowledge base.
+/// DEMO DATASET ONLY — not a clinical reference. Replace with a verified
+/// source (RxNav, DrugBank, CDSCO) behind src/lib/interactions/index.ts.
+model DrugInteraction {
+  id       String @id @default(cuid())
+  pairKey  String @unique // normalised sorted "drugA|drugB"
+  medicineA String
+  medicineB String
+  severity String // MINOR | MODERATE | MAJOR | UNKNOWN
+  description   String
+  descriptionHi String
+  action        String
+  actionHi      String
+  source String @default("DEMO_DATASET")
+  createdAt DateTime @default(now())
+
+  @@map("drug_interactions")
+}
