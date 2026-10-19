@@ -15,7 +15,7 @@ lib/generated/
 prisma/dev.db
 prisma/dev.db-journal
 prisma/*.db
-storage/
+/storage/
 
 # env
 .env
