@@ -1,29 +1,12 @@
 "use server";
 
-import { questionSchema } from "@/lib/validation/schemas";
-import { requireAppContext } from "@/lib/auth/context";
-import { buildHealthContext } from "@/lib/health/context";
-import { answerQuestion } from "@/lib/ai";
-import { checkMedicineInteractions } from "@/lib/interactions";
 import { interactionCheckSchema } from "@/lib/validation/schemas";
-import type { ActionResult } from "@/types";
-import type { AssistantAnswer } from "@/types/health";
+import { requireAppContext } from "@/lib/auth/context";
+import { checkMedicineInteractions } from "@/lib/interactions";
 import { logSafe } from "@/lib/logging";
 
-/** Answers a question using only the active profile's saved records. */
-export async function askAssistantAction(question: string): Promise<ActionResult<AssistantAnswer>> {
-  const { profile, prefs } = await requireAppContext();
-  const parsed = questionSchema.safeParse(question);
-  if (!parsed.success) return { ok: false, errorKey: "error.actionFailed", detail: parsed.error.issues[0]?.message };
-  try {
-    const context = await buildHealthContext(profile);
-    const answer = await answerQuestion({ context, question: parsed.data, locale: prefs.lang });
-    return { ok: true, data: answer };
-  } catch (error) {
-    logSafe("askAssistant failed", error);
-    return { ok: false, errorKey: "error.generic" };
-  }
-}
+// Assistant questions (typed or spoken) go through /api/voice/ask, which applies the same guards,
+// ownership checks and rate limits for both input methods.
 
 /** Checks pairs of medicines against the configured interaction provider (mock dataset in the demo). */
 export async function checkInteractionsAction(medicines: string[]) {

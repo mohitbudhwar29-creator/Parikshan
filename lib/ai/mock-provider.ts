@@ -224,7 +224,9 @@ function answerMetric(metric: MetricName | "blood_pressure", context: HealthCont
   if (readings.length >= 3) {
     lines.push(t("ai.metricHistory", { list: readings.map((reading) => `${formatShort(reading.date, locale)}: ${reading.display}`).join(", ") }));
   }
-  return { answer: lines.join("\n"), found: true, sources: sourcesFor(context, [latest, previous], locale) };
+  // Cite every reading that the answer mentions, so the history line is always backed by its records.
+  const cited = readings.length >= 3 ? readings : [latest, previous];
+  return { answer: lines.join("\n"), found: true, sources: sourcesFor(context, cited, locale) };
 }
 
 function answerLastPrescription(context: HealthContext, t: Translator, locale: Locale): AssistantAnswer {

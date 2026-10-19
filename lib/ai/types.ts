@@ -19,6 +19,8 @@ export interface ContextRecord {
   doctorName: string | null;
   facility: string | null;
   diagnosisTerms: string[];
+  /** Extraction warnings saved with the record. A non-empty list means the values need checking. */
+  warnings: string[];
   labs: { testName: string; value: string; numericValue: number | null; unit: string | null; referenceRange: string | null; flag: ValueFlag; metricName: string | null }[];
   medications: { name: string; dosage: string; timesPerDay: number; durationDays: number | null }[];
 }

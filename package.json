@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "rm -f prisma/dev.db && npm run db:migrate && npm run db:seed"
+    "db:reset": "rm -f prisma/dev.db && npm run db:migrate && npm run db:seed",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",

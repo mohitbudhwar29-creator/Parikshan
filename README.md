@@ -54,6 +54,7 @@ Open http://localhost:3000 and choose **Try Demo Patient** (or **Try Interactive
 | `npm run dev` | Applies pending migrations, seeds demo data if missing, starts the dev server on `0.0.0.0:3000`. |
 | `npm run build` / `npm start` | Production build and server. |
 | `npm run typecheck` | `tsc --noEmit` (strict). |
+| `npm test` | Runs the automated tests (`tests/`) on a throwaway database. See [Tests](#tests). |
 | `npm run db:migrate` | Applies SQL migrations in `prisma/migrations` (tracked in `_prisma_migrations`). |
 | `npm run db:seed` | Seeds the fictional demo data (idempotent). |
 | `npm run db:reset` | Deletes `prisma/dev.db`, then migrates and seeds. |
@@ -81,6 +82,14 @@ See `.env.example`. None of these are required for the demo. The mock providers 
 The mock OCR and AI providers are deterministic. They read the sample text that matches the filename (for example `lab`, `blood`, or `cbc` for a lab report, `visit` or `doctor` for a visit note, and anything else for a prescription). Reference ranges are only used when they are printed on the document. Otherwise the value is shown as *Outside the reference range*, not flagged as normal or abnormal.
 
 ---
+
+## Voice assistant
+
+The assistant can take spoken questions and read answers aloud (English and Hindi). It answers only from the active profile's saved records, cites each source, and states what is missing. Voice needs no credentials by default (browser speech). Server speech through OpenAI needs `OPENAI_API_KEY` and is off unless configured. Raw audio and transcripts are not stored; see [docs/voice.md](docs/voice.md) for consent, retention, deletion, and limits.
+
+## Tests
+
+`npm test` runs the automated suite with Node's built-in test runner (`node:test` with `tsx`, files in `tests/`). It uses a separate SQLite database at `storage/test/voice-tests.db`, which is recreated on each run, so the demo data is not touched. The suite covers authorization on every voice route, cross-profile and forged-cookie requests, grounding against stored values, missing and ambiguous data, refusals (emergency, actions, injection), rate limits, provider timeouts and errors, speech tokens, audio signature checks, the client state machine, and a check that no secret reaches client code.
 
 ## Architecture
 

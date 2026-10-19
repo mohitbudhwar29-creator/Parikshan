@@ -53,6 +53,7 @@ export async function buildHealthContext(profile: { id: string; name: string; re
       doctorName: record.doctorName,
       facility: record.facility,
       diagnosisTerms: parseDiagnosisTerms(record.extractedJson),
+      warnings: parseWarnings(record.extractedJson),
       labs: record.labResults.map((lab) => ({
         testName: lab.testName,
         value: lab.value,
@@ -81,6 +82,16 @@ export async function buildHealthContext(profile: { id: string; name: string; re
       sourceType: medicine.sourceRecord?.type ?? null,
     })),
   };
+}
+
+function parseWarnings(extractedJson: string | null): string[] {
+  if (!extractedJson) return [];
+  try {
+    const parsed = JSON.parse(extractedJson) as { warnings?: unknown };
+    return Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function parseDiagnosisTerms(extractedJson: string | null): string[] {
