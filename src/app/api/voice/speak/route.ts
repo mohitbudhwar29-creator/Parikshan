@@ -9,6 +9,7 @@ import { getTextToSpeechProvider } from "@/lib/voice/providers";
 import { checkRateLimit, RATE_LIMIT_RULES } from "@/lib/voice/rate-limit";
 import { buildSpokenText } from "@/lib/voice/spoken";
 import { voiceSpeakSchema } from "@/lib/validation";
+import { MAX_JSON_BODY_BYTES, readBoundedBody, uploadErrorStatus } from "@/lib/voice/upload";
 import type { Language } from "@/types/domain";
 
 /**
@@ -48,9 +49,15 @@ export async function POST(request: Request) {
     return jsonVoiceError("RATE_LIMITED", 429, { retryAfterSeconds: limit.retryAfterSeconds });
   }
 
+  // Bounded for the same reason as the transcribe route: `request.json()` buffers
+  // the whole body before any schema can reject it. This endpoint needs a message id,
+  // so anything past a few kilobytes is not a request this app made.
+  const raw = await readBoundedBody(request, MAX_JSON_BODY_BYTES);
+  if (!raw.ok) return jsonVoiceError(raw.code, uploadErrorStatus(raw.code));
+
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(new TextDecoder().decode(raw.bytes));
   } catch {
     return jsonVoiceError("INVALID_REQUEST", 400);
   }
