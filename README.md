@@ -361,7 +361,12 @@ client code.
 **Security and privacy**
 
 - `/api/voice/transcribe` and `/api/voice/speak` require a session, reject cross-origin requests, apply a
-  per-user rate limit and enforce MIME/size limits. `/speak` accepts a **message id**, not text: the server
+  per-user rate limit and enforce MIME/size limits. The size limit holds *while the body arrives*, not after:
+  `Content-Length` is only the client's claim, so `src/lib/voice/upload.ts` counts the stream, cancels it the
+  moment it passes the cap (the excess bytes are never buffered) and abandons a stalled upload on a deadline
+  instead of holding the route open. The MIME check is paired with a container sniff — bytes with no
+  recognisable WebM/OGG/WAV/M4A/MP3/AAC header, or a header that contradicts the declared type, are refused
+  before a provider is called or an audit row is written. `/speak` accepts a **message id**, not text: the server
   loads it with `profile.userId = session.user.id`, answers `404` for both missing and foreign messages, and
   returns `no-store` audio with a sandbox CSP.
 - Raw audio is never written to disk, the database or logs. It exists in the request buffer only; audit rows

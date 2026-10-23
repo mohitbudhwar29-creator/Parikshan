@@ -14,6 +14,10 @@ export function buildSpokenText(text: string, maxChars = 1500): string {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    // A bare "[1]" is a screen-only citation marker. Read aloud it becomes the word
+    // "one" in the middle of a sentence; `stripSourcesForSpeech()` names the source
+    // instead, which is what a listener can actually act on.
+    .replace(/\s*\[\d+(?:\s*[,–]\s*\d+)*\]/g, "")
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(/^#{1,6}\s*/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")

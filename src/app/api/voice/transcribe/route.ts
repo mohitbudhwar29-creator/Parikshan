@@ -9,6 +9,13 @@ import { isSameOriginRequest, jsonVoiceError, jsonVoiceOk } from "@/lib/voice/ht
 import { getSpeechToTextProvider } from "@/lib/voice/providers";
 import { checkRateLimit, RATE_LIMIT_RULES } from "@/lib/voice/rate-limit";
 import { sanitizeTranscript } from "@/lib/voice/transcript";
+import {
+  MULTIPART_FRAMING_BYTES,
+  formDataFromBytes,
+  readBoundedBody,
+  uploadErrorStatus,
+  verifyAudioBytes,
+} from "@/lib/voice/upload";
 import type { Language } from "@/types/domain";
 
 /**
@@ -46,17 +53,24 @@ export async function POST(request: Request) {
 
   const config = getVoiceConfig();
   const maxBytes = config.maxAudioMb * 1024 * 1024;
-  const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declaredLength) && declaredLength > maxBytes + 64 * 1024) {
-    return jsonVoiceError("AUDIO_TOO_LARGE", 413, { maxAudioMb: config.maxAudioMb });
+
+  // Cap the read itself, not just the size the client advertised. A chunked upload
+  // has no `Content-Length`, and `request.formData()` would buffer all of it before
+  // `file.size` could be checked — which makes this route a memory-exhaustion
+  // primitive for anyone with a session. Multipart framing gets its own allowance so
+  // a file of exactly `maxAudioMb` is still accepted; the per-file check below is
+  // what enforces the real limit.
+  const body = await readBoundedBody(request, maxBytes + MULTIPART_FRAMING_BYTES);
+  if (!body.ok) {
+    return jsonVoiceError(
+      body.code,
+      uploadErrorStatus(body.code),
+      body.code === "AUDIO_TOO_LARGE" ? { maxAudioMb: config.maxAudioMb } : {},
+    );
   }
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return jsonVoiceError("INVALID_REQUEST", 400);
-  }
+  const form = await formDataFromBytes(body.bytes, request.headers.get("content-type"));
+  if (!form) return jsonVoiceError("INVALID_REQUEST", 400);
 
   const entry = form.get("audio");
   if (!entry || typeof entry === "string") {
@@ -80,9 +94,20 @@ export async function POST(request: Request) {
 
   try {
     const audio = new Uint8Array(await file.arrayBuffer());
+
+    // A declared MIME type is the client's claim about its own bytes; the container
+    // header is evidence. Checking it here means a payload that is not actually audio
+    // never reaches a provider, and never gets billed or logged as if it were.
+    const verified = verifyAudioBytes(audio, file.type);
+    if (!verified.ok) {
+      return jsonVoiceError(verified.code, httpStatusForVoiceError(verified.code), {
+        reason: verified.reason,
+      });
+    }
+
     const result = await provider.transcribe({
       audio,
-      mimeType: file.type,
+      mimeType: verified.mime,
       language,
     });
 
@@ -109,7 +134,7 @@ export async function POST(request: Request) {
         provider: result.provider,
         bytes: file.size,
         language,
-        mimeType: file.type,
+        mimeType: verified.mime,
       },
     });
 
